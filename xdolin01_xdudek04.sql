@@ -12,6 +12,7 @@ DROP TABLE Oddeleni CASCADE CONSTRAINTS;
 DROP TABLE Druh_oddeleni CASCADE CONSTRAINTS;
 DROP TABLE Samice CASCADE CONSTRAINTS;
 DROP SEQUENCE zivocich_id_seq;
+DROP INDEX ind_druh;
 set serveroutput on;
 
 -- Vytvoreni tabulek
@@ -288,6 +289,12 @@ INSERT INTO Zivocich VALUES(NULL, 0, 1, 'Luda', TO_DATE('02.02.1933', 'dd.mm.yyy
 INSERT INTO Zivocich VALUES(NULL, 1, 0, 'Liza', TO_DATE('04.12.2004', 'dd.mm.yyyy'), NULL);
 INSERT INTO Zivocich VALUES(NULL, 2, 2, 'Citrus', TO_DATE('15.03.2012', 'dd.mm.yyyy'), NULL);
 INSERT INTO Zivocich VALUES(NULL, 3, 1, 'Karel', TO_DATE('01.01.2000', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 0, 1, 'Edmund', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 0, 1, 'Lojza', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 0, 2, 'Clint', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 0, 2, 'JoshRobertson', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 1, 0, 'Giza', TO_DATE('04.12.2004', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 1, 0, 'Bezina', TO_DATE('04.12.2004', 'dd.mm.yyyy'), NULL);
 
 INSERT INTO Samice VALUES(3, 42);
 
@@ -315,12 +322,21 @@ CALL update_adresa('999999999', 'New York', 'Skacelova', '79999'); -- Ukazka 2. 
 CALL update_adresa('9001089075', 'New York', 'Skacelova', '79999'); -- Ukazka 2. procedury -> zaznam se upravi
 
 EXPLAIN PLAN FOR
-	SELECT O.id_oddeleni, O.nazev, COUNT(*) pocet
-	FROM Oddeleni O, Zivocich Z
-	WHERE O.id_oddeleni = Z.id_oddeleni
-	GROUP BY O.id_oddeleni, O.nazev;
+	SELECT D.id_druhu, D.rod, COUNT(*) pocet
+	FROM Druh D, Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
+	GROUP BY D.id_druhu, D.rod;
 
-SELECT * FROM TABLE(dbms_xplan.display);
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+CREATE INDEX ind_druh ON Druh (id_druhu, trida, rod);
+
+EXPLAIN PLAN FOR
+	FROM Druh D, Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
+	GROUP BY D.id_druhu, D.rod;
+
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
 -- SQL dotazy
 /*
 -- **Dva dotazy vyuzivajici spojeni dvou tabulek**
