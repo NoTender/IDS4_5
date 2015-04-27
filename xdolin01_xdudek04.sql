@@ -2,7 +2,8 @@
 -- xdudek04
 -- xdolin01 
 
--- Odstraneni tabulek
+-- Odstraneni tabulek, indexu a sekvence
+DROP INDEX ind_druh;
 DROP TABLE Druh CASCADE CONSTRAINTS;
 DROP TABLE Zivocich CASCADE CONSTRAINTS;
 DROP TABLE Mereni CASCADE CONSTRAINTS;
@@ -12,7 +13,7 @@ DROP TABLE Oddeleni CASCADE CONSTRAINTS;
 DROP TABLE Druh_oddeleni CASCADE CONSTRAINTS;
 DROP TABLE Samice CASCADE CONSTRAINTS;
 DROP SEQUENCE zivocich_id_seq;
-DROP INDEX ind_druh;
+
 set serveroutput on;
 
 -- Vytvoreni tabulek
@@ -128,6 +129,17 @@ ALTER TABLE Samice ADD(
 ALTER TABLE Zivocich
 	ADD CONSTRAINT chck_datum_nar_umr
 	CHECK (dat_narozeni <= dat_umrti);
+
+-- Odebrani prav na tabulky pro kolegu
+
+REVOKE ALL ON Druh FROM xdolin01;
+REVOKE ALL ON Zivocich FROM xdolin01;
+REVOKE ALL ON Mereni FROM xdolin01;
+REVOKE ALL ON Osetrovatel FROM xdolin01;    
+REVOKE ALL ON Osetrovatel_oddeleni FROM xdolin01;
+REVOKE ALL ON Oddeleni FROM xdolin01;
+REVOKE ALL ON Druh_oddeleni FROM xdolin01;
+REVOKE ALL ON Samice FROM xdolin01;
 
 -- TRIIGER 1 - Auto-inkrementace primarniho klice
 CREATE SEQUENCE zivocich_id_seq START WITH 1 INCREMENT BY 1;
@@ -295,6 +307,7 @@ INSERT INTO Zivocich VALUES(NULL, 0, 2, 'Clint', TO_DATE('02.02.2015', 'dd.mm.yy
 INSERT INTO Zivocich VALUES(NULL, 0, 2, 'JoshRobertson', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
 INSERT INTO Zivocich VALUES(NULL, 1, 0, 'Giza', TO_DATE('04.12.2004', 'dd.mm.yyyy'), NULL);
 INSERT INTO Zivocich VALUES(NULL, 1, 0, 'Bezina', TO_DATE('04.12.2004', 'dd.mm.yyyy'), NULL);
+INSERT INTO Zivocich VALUES(NULL, 3, 1, 'Kostislav', TO_DATE('01.01.2000', 'dd.mm.yyyy'), NULL);
 
 INSERT INTO Samice VALUES(3, 42);
 
@@ -332,11 +345,47 @@ SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
 CREATE INDEX ind_druh ON Druh (id_druhu, trida, rod);
 
 EXPLAIN PLAN FOR
+	SELECT /*+ INDEX(Druh ind_druh)*/ D.id_druhu, D.rod, COUNT(*) pocet
 	FROM Druh D, Zivocich Z
 	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
 	GROUP BY D.id_druhu, D.rod;
 
 SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+GRANT ALL ON Druh to xdolin01;
+GRANT ALL ON Zivocich to xdolin01;
+GRANT ALL ON Mereni to xdolin01;
+GRANT ALL ON Osetrovatel to xdolin01;
+GRANT ALL ON Osetrovatel_oddeleni to xdolin01;
+GRANT ALL ON Oddeleni to xdolin01;
+GRANT ALL ON Druh_oddeleni to xdolin01;
+GRANT ALL ON Samice to xdolin01;
+
+DROP MATERIALIZED VIEW druh_zivocich;
+
+CREATE MATERIALIZED VIEW druh_zivocich
+	NOLOGGING -- Nezaznamenavat operace s danym pohledem
+	CACHE -- Vyuzije se cache pamet pro rychlejsi zpristupneni pozadovanych dat
+	BUILD IMMEDIATE -- Ihned po vytvoreni se pohled naplni daty
+	ENABLE QUERY REWRITE -- Zajisti pouzitelnost optimalizatoru
+	AS
+		SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
+		FROM xdudek04.Druh D, xdudek04.Zivocich Z
+		WHERE D.id_druhu = Z.id_druhu;
+
+-- Demonstrace vyuziti vlastnosti enable query rewrite - nedochazi ke spojeni tabulky, ale vyuzije se jiz existujiciho pohledu
+EXPLAIN PLAN FOR
+	SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
+	FROM xdudek04.Druh D, xdudek04.Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.rod = 'Kockodan';
+
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+--Demonstrace uziti materializovaneho pohledu jako klasicke existujici tabulky, vypise informace o zviratech rodu Stegosaurus
+SELECT id_zivocicha, jmeno, rod, druh, dat_narozeni, dat_umrti
+FROM druh_zivocich
+WHERE rod = 'Stegosaurus';
+
 -- SQL dotazy
 /*
 -- **Dva dotazy vyuzivajici spojeni dvou tabulek**
