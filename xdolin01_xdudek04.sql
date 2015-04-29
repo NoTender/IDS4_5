@@ -147,7 +147,6 @@ CREATE SEQUENCE zivocich_id_seq START WITH 1 INCREMENT BY 1;
 CREATE OR REPLACE TRIGGER auto_inc_zivocich 
 BEFORE INSERT ON Zivocich
 FOR EACH ROW
-
 BEGIN
 	IF (:new.id_zivocicha IS NULL) THEN
 		SELECT zivocich_id_seq.nextval
@@ -157,7 +156,7 @@ BEGIN
 END;
 /
 
--- TRIGGER 2
+-- TRIGGER 2 - Overeni rodneho cisla
 CREATE OR REPLACE TRIGGER overeni_rc BEFORE INSERT OR UPDATE ON Osetrovatel --trigger pro overeni rodneho cisla
 FOR EACH ROW 
 DECLARE 
@@ -295,6 +294,7 @@ INSERT INTO Oddeleni VALUES(2, 'klec', 'Klec A');
 INSERT INTO Osetrovatel VALUES('9154193356', 'Jindrich', 'Dudek', 'Policka', 'Kozlova', '79022', '777555666');
 INSERT INTO Osetrovatel VALUES('9512235062', 'Milos', 'Dolinsky', 'Vidnava', 'Besthovni', '79055', '789444555');
 INSERT INTO Osetrovatel VALUES('9001089075', 'Joey', 'Shabadoo', 'Brno', 'Purkynova', '79021', '584845654');
+INSERT INTO Osetrovatel VALUES('9406103796', 'Pavel', 'Mencner', 'Brno', 'Bozetechova', '79021', '730587888');
 
 INSERT INTO Zivocich VALUES(NULL, 0, 0, 'Chose', TO_DATE('02.02.2015', 'dd.mm.yyyy'), NULL);
 INSERT INTO Zivocich VALUES(NULL, 0, 1, 'Luda', TO_DATE('02.02.1933', 'dd.mm.yyyy'), TO_DATE('04.05.1950', 'dd.mm.yyyy'));
@@ -334,59 +334,7 @@ CALL update_adresa(NULL, 'New York', 'Skacelova', '79999'); -- Ukazka 2. procedu
 CALL update_adresa('999999999', 'New York', 'Skacelova', '79999'); -- Ukazka 2. procedury -> vypise chybu na zaklade vyjimky
 CALL update_adresa('9001089075', 'New York', 'Skacelova', '79999'); -- Ukazka 2. procedury -> zaznam se upravi
 
-EXPLAIN PLAN FOR
-	SELECT D.id_druhu, D.rod, COUNT(*) pocet
-	FROM Druh D, Zivocich Z
-	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
-	GROUP BY D.id_druhu, D.rod;
-
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
-
-CREATE INDEX ind_druh ON Druh (id_druhu, trida, rod);
-
-EXPLAIN PLAN FOR
-	SELECT /*+ INDEX(Druh ind_druh)*/ D.id_druhu, D.rod, COUNT(*) pocet
-	FROM Druh D, Zivocich Z
-	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
-	GROUP BY D.id_druhu, D.rod;
-
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
-
-GRANT ALL ON Druh to xdolin01;
-GRANT ALL ON Zivocich to xdolin01;
-GRANT ALL ON Mereni to xdolin01;
-GRANT ALL ON Osetrovatel to xdolin01;
-GRANT ALL ON Osetrovatel_oddeleni to xdolin01;
-GRANT ALL ON Oddeleni to xdolin01;
-GRANT ALL ON Druh_oddeleni to xdolin01;
-GRANT ALL ON Samice to xdolin01;
-
-DROP MATERIALIZED VIEW druh_zivocich;
-
-CREATE MATERIALIZED VIEW druh_zivocich
-	NOLOGGING -- Nezaznamenavat operace s danym pohledem
-	CACHE -- Vyuzije se cache pamet pro rychlejsi zpristupneni pozadovanych dat
-	BUILD IMMEDIATE -- Ihned po vytvoreni se pohled naplni daty
-	ENABLE QUERY REWRITE -- Zajisti pouzitelnost optimalizatoru
-	AS
-		SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
-		FROM xdudek04.Druh D, xdudek04.Zivocich Z
-		WHERE D.id_druhu = Z.id_druhu;
-
--- Demonstrace vyuziti vlastnosti enable query rewrite - nedochazi ke spojeni tabulky, ale vyuzije se jiz existujiciho pohledu
-EXPLAIN PLAN FOR
-	SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
-	FROM xdudek04.Druh D, xdudek04.Zivocich Z
-	WHERE D.id_druhu = Z.id_druhu AND D.rod = 'Kockodan';
-
-SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
-
---Demonstrace uziti materializovaneho pohledu jako klasicke existujici tabulky, vypise informace o zviratech rodu Stegosaurus
-SELECT id_zivocicha, jmeno, rod, druh, dat_narozeni, dat_umrti
-FROM druh_zivocich
-WHERE rod = 'Stegosaurus';
-
--- SQL dotazy
+-- SQL dotazy:
 /*
 -- **Dva dotazy vyuzivajici spojeni dvou tabulek**
 -- Dotaz vypise vsechny mereni, ktere provedl osetrovatel jmenem Jindrich a prijmenim Dudek
@@ -433,4 +381,61 @@ WHERE O.rodne_cislo = M.rodne_cislo AND
 EXISTS (SELECT *
 	FROM Oddeleni D, Osetrovatel_oddeleni OD
 	WHERE O.rodne_cislo = OD.rodne_cislo AND OD.id_oddeleni = D.id_oddeleni);
-	*/
+*/
+-- Vytvoreni a vypis planu neoptimalizovaneho dotazu
+EXPLAIN PLAN FOR
+	SELECT D.id_druhu, D.rod, COUNT(*) pocet
+	FROM Druh D, Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
+	GROUP BY D.id_druhu, D.rod;
+
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+CREATE INDEX ind_druh ON Druh (id_druhu, trida, rod);
+
+-- Vytvoreni a vypis planu optimalizovaneho vytvorenim indexu:
+EXPLAIN PLAN FOR
+	SELECT /*+ INDEX(Druh ind_druh)*/ D.id_druhu, D.rod, COUNT(*) pocet
+	FROM Druh D, Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.trida = 'savci'
+	GROUP BY D.id_druhu, D.rod;
+
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+--Pridani prav druhemu clenovi tymu:
+GRANT ALL ON Druh to xdolin01;
+GRANT ALL ON Zivocich to xdolin01;
+GRANT ALL ON Mereni to xdolin01;
+GRANT ALL ON Osetrovatel to xdolin01;
+GRANT ALL ON Osetrovatel_oddeleni to xdolin01;
+GRANT ALL ON Oddeleni to xdolin01;
+GRANT ALL ON Druh_oddeleni to xdolin01;
+GRANT ALL ON Samice to xdolin01;
+
+--Cast, kterou spousti druhy clen tymu: 
+
+DROP MATERIALIZED VIEW druh_zivocich;
+
+--Materializovany pohled spojujici dve tabulky
+CREATE MATERIALIZED VIEW druh_zivocich
+	NOLOGGING -- Nezaznamenavat operace s danym pohledem
+	CACHE -- Vyuzije se cache pamet pro rychlejsi zpristupneni pozadovanych dat
+	BUILD IMMEDIATE -- Ihned po vytvoreni se pohled naplni daty
+	ENABLE QUERY REWRITE -- Zajisti pouzitelnost materializovaneho pohledu pro optimalizator
+	AS
+		SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
+		FROM xdudek04.Druh D, xdudek04.Zivocich Z
+		WHERE D.id_druhu = Z.id_druhu;
+
+-- Demonstrace vyuziti vlastnosti enable query rewrite - nedochazi ke spojeni tabulky, ale vyuzije se jiz existujiciho pohledu
+EXPLAIN PLAN FOR
+	SELECT Z.id_zivocicha, Z.id_oddeleni, Z.jmeno, Z.dat_narozeni, Z.dat_umrti, D.rod, D.druh, D.trida
+	FROM xdudek04.Druh D, xdudek04.Zivocich Z
+	WHERE D.id_druhu = Z.id_druhu AND D.rod = 'Kockodan';
+
+SELECT PLAN_TABLE_OUTPUT FROM TABLE(dbms_xplan.display);
+
+--Demonstrace uziti materializovaneho pohledu jako klasicke existujici tabulky, vypise informace o zviratech rodu Stegosaurus
+SELECT id_zivocicha, jmeno, rod, druh, dat_narozeni, dat_umrti
+FROM druh_zivocich
+WHERE rod = 'Stegosaurus';
